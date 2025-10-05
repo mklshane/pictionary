@@ -19,27 +19,43 @@ const DrawingBoard = ({ roomId, isDrawer }: Props) => {
     if (context) {
       context.lineWidth = 3;
       context.lineCap = "round";
+      context.strokeStyle = "black";
       setCtx(context);
     }
 
-    // Receive drawing from others
-    socket.on("receive_drawing", (data) => {
+    const handleReceiveDrawing = (data: any) => {
       if (!ctx) return;
-      const { x, y } = data;
-      ctx.lineTo(x, y);
-      ctx.stroke();
-    });
+
+      if (data.type === "start") {
+        ctx.beginPath();
+        ctx.moveTo(data.x, data.y);
+      } else if (data.type === "draw") {
+        ctx.lineTo(data.x, data.y);
+        ctx.stroke();
+      }
+    };
+
+    socket.on("receive_drawing", handleReceiveDrawing);
 
     return () => {
-      socket.off("receive_drawing");
+      socket.off("receive_drawing", handleReceiveDrawing);
     };
   }, [ctx]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isDrawer || !ctx) return;
     setDrawing(true);
+
+    const x = e.nativeEvent.offsetX;
+    const y = e.nativeEvent.offsetY;
+
     ctx.beginPath();
-    ctx.moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+    ctx.moveTo(x, y);
+
+    socket.emit("drawing_data", {
+      roomId,
+      data: { type: "start", x, y },
+    });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -47,10 +63,14 @@ const DrawingBoard = ({ roomId, isDrawer }: Props) => {
 
     const x = e.nativeEvent.offsetX;
     const y = e.nativeEvent.offsetY;
+
     ctx.lineTo(x, y);
     ctx.stroke();
 
-    socket.emit("drawing_data", { roomId, data: { x, y } });
+    socket.emit("drawing_data", {
+      roomId,
+      data: { type: "draw", x, y },
+    });
   };
 
   const handleMouseUp = () => {
@@ -58,18 +78,29 @@ const DrawingBoard = ({ roomId, isDrawer }: Props) => {
   };
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={800}
-      height={500}
-      style={{
-        border: "1px solid black",
-        cursor: isDrawer ? "crosshair" : "not-allowed",
-      }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-    />
+    <div className="relative">
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={500}
+        className={`w-full border-2 border-gray-300 rounded-lg shadow-md ${
+          isDrawer
+            ? "cursor-crosshair bg-white hover:shadow-lg transition-shadow duration-200"
+            : "cursor-not-allowed bg-gray-50"
+        }`}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      />
+      {!isDrawer && (
+        <div className="absolute top-4 left-4 bg-gray-800 bg-opacity-75 text-white px-4 py-2 rounded-lg">
+          <p className="text-sm font-semibold">
+            You are a guesser - watch the drawing!
+          </p>
+        </div>
+      )}
+    </div>
   );
 };
 
